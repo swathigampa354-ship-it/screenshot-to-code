@@ -39,6 +39,14 @@ server {
 }
 NGINXCONF
 
+RUN cat <<'STARTSCRIPT' > /app/start-nginx.sh
+#!/bin/bash
+set -e
+envsubst '$PORT' < /etc/nginx/templates/default.conf.template > /etc/nginx/sites-enabled/default
+exec nginx -g "daemon off;"
+STARTSCRIPT
+RUN chmod +x /app/start-nginx.sh
+
 RUN cat <<'SUPERVISORCONF' > /etc/supervisor/conf.d/supervisord.conf
 [supervisord]
 nodaemon=true
@@ -52,7 +60,7 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 
 [program:nginx]
-command=/bin/bash -c "envsubst '$PORT' < /etc/nginx/templates/default.conf.template > /etc/nginx/sites-enabled/default && nginx -g 'daemon off;'"
+command=/app/start-nginx.sh
 stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
