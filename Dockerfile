@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 FROM node:20-slim AS frontend-build
 WORKDIR /frontend
 RUN corepack enable
@@ -19,29 +20,43 @@ COPY --from=frontend-build /frontend/dist /app/frontend-dist
 
 RUN mkdir -p /etc/nginx/templates
 
-RUN echo 'server { \
-  listen ${PORT}; \
-  location / { \
-    root /app/frontend-dist; \
-    try_files $uri $uri/ /index.html; \
-  } \
-  location /generate-code { \
-    proxy_pass http://127.0.0.1:7861; \
-    proxy_http_version 1.1; \
-    proxy_set_header Upgrade $http_upgrade; \
-    proxy_set_header Connection "upgrade"; \
-  } \
-  location /api/ { \
-    proxy_pass http://127.0.0.1:7861; \
-  } \
-}' > /etc/nginx/templates/default.conf.template
+RUN cat <<'NGINXCONF' > /etc/nginx/templates/default.conf.template
+server {
+  listen ${PORT};
+  location / {
+    root /app/frontend-dist;
+    try_files $uri $uri/ /index.html;
+  }
+  location /generate-code {
+    proxy_pass http://127.0.0.1:7861;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+  location /api/ {
+    proxy_pass http://127.0.0.1:7861;
+  }
+}
+NGINXCONF
 
-RUN echo '[supervisord]\n\
-nodaemon=true\n\
-[program:backend]\n\
-command=poetry run uvicorn main:app --host 0.0.0.0 --port 7861\n\
-directory=/app/backend\n\
-[program:nginx]\n\
-command=/bin/sh -c "envsubst \x27$PORT\x27 < /etc/nginx/templates/default.conf.template > /etc/nginx/sites-enabled/default && nginx -g \x27daemon off;\x27"' > /etc/supervisor/conf.d/supervisord.conf
+RUN cat <<'SUPERVISORCONF' > /etc/supervisor/conf.d/supervisord.conf
+[supervisord]
+nodaemon=true
+
+[program:backend]
+command=poetry run uvicorn main:app --host 0.0.0.0 --port 7861
+directory=/app/backend
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:nginx]
+command=/bin/bash -c "envsubst '$PORT' < /etc/nginx/templates/default.conf.template > /etc/nginx/sites-enabled/default && nginx -g 'daemon off;'"
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+SUPERVISORCONF
 
 CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
