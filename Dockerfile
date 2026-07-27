@@ -17,6 +17,8 @@ COPY backend/ ./
 
 COPY --from=frontend-build /frontend/dist /app/frontend-dist
 
+RUN mkdir -p /etc/nginx/templates
+
 RUN echo 'server { \
   listen ${PORT}; \
   location / { \
